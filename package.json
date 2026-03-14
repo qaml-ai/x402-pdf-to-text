@@ -16,7 +16,8 @@
     "@x402/hono": "^2.6.0",
     "x402-cdp": "file:../x402-cdp",
     "x402-ai": "file:../x402-ai",
-    "hono": "^4.12.7"
+    "hono": "^4.12.7",
+    "x402-openapi": "file:../x402-openapi"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250312.0",
