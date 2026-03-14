@@ -1,56 +1,47 @@
 import { Hono } from "hono";
 import { cdpPaymentMiddleware } from "x402-cdp";
-import { describeRoute, openAPIRouteHandler } from "hono-openapi";
+import { openapiFromMiddleware } from "x402-openapi";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const app = new Hono<{ Bindings: Env }>();
 
-// OpenAPI spec — must be before paymentMiddleware
-app.get("/.well-known/openapi.json", openAPIRouteHandler(app, {
-  documentation: {
-    info: {
-      title: "x402 PDF to Text Service",
-      description: "Extract text from PDF files. Supports text-based and scanned/image PDFs via OCR. Pay-per-use via x402 protocol on Base mainnet.",
-      version: "1.0.0",
-    },
-    servers: [{ url: "https://pdf.camelai.io" }],
-  },
-}));
-
-// x402 payment gate on POST /extract
-app.use(
-  cdpPaymentMiddleware(
-    (env) => ({
-      "POST /extract": {
-        accepts: [
-          {
-            scheme: "exact",
-            price: "$0.01",
-            network: "eip155:8453",
-            payTo: env.SERVER_ADDRESS as `0x${string}`,
+const ROUTES = {
+  "POST /": {
+    accepts: [{ scheme: "exact", price: "$0.01", network: "eip155:8453", payTo: "0x0" as `0x${string}` }],
+    description: "Extract text from a PDF file. Upload as multipart/form-data with a 'file' field.",
+    mimeType: "application/json",
+    extensions: {
+      bazaar: {
+        info: {
+          input: {
+            type: "http",
+            method: "POST",
+            bodyType: "multipart",
+            body: {
+              file: { type: "file", description: "PDF file to extract text from (max 10MB)", required: true },
+              input: { type: "string", description: "Optional text instructions (unused, file is primary input)", required: false },
+            },
           },
-        ],
-        description: "Extract text from a PDF file. Supports text-based and scanned/image PDFs via OCR.",
-        mimeType: "application/json",
-        extensions: {
-          bazaar: {
-            discoverable: true,
-            inputSchema: {
-              bodyFields: {
-                file: {
-                  type: "file",
-                  description: "PDF file to extract text from (max 10MB)",
-                  required: true,
-                  mimeTypes: ["application/pdf"],
-                },
-              },
+          output: { type: "json" },
+        },
+        schema: {
+          properties: {
+            input: {
+              properties: { method: { type: "string", enum: ["POST"] } },
+              required: ["method"],
             },
           },
         },
       },
-    })
-  )
+    },
+  },
+};
+
+app.use(
+  cdpPaymentMiddleware((env) => ({
+    "POST /": { ...ROUTES["POST /"], accepts: [{ ...ROUTES["POST /"].accepts[0], payTo: env.SERVER_ADDRESS as `0x${string}` }] },
+  }))
 );
 
 /**
@@ -135,29 +126,17 @@ function decodePdfString(s: string): string {
     .replace(/\\(\d{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
 }
 
-app.post("/extract", describeRoute({
-  description: "Extract text from a PDF file (multipart/form-data). Requires x402 payment ($0.01).",
-  requestBody: {
-    required: true,
-    content: {
-      "multipart/form-data": {
-        schema: {
-          type: "object",
-          required: ["file"],
-          properties: {
-            file: { type: "string", format: "binary", description: "PDF file to extract text from (max 10MB)" },
-          },
-        },
-      },
-    },
-  },
-  responses: {
-    200: { description: "Extracted text", content: { "application/json": { schema: { type: "object" } } } },
-    400: { description: "Invalid request or missing file" },
-    402: { description: "Payment required" },
-    413: { description: "File too large" },
-  },
-}), async (c) => {
+/** Convert ArrayBuffer to base64 string */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+app.post("/", async (c) => {
   let body: FormData;
   try {
     body = await c.req.formData();
@@ -246,27 +225,12 @@ app.post("/extract", describeRoute({
   }
 });
 
-/** Convert ArrayBuffer to base64 string */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
+app.get("/.well-known/openapi.json", openapiFromMiddleware("x402 PDF to Text", "pdf.camelai.io", ROUTES));
 
-// Health check
-app.get("/", describeRoute({
-  description: "Health check and service info.",
-  responses: {
-    200: { description: "Service info", content: { "application/json": { schema: { type: "object" } } } },
-  },
-}), (c) => {
+app.get("/", (c) => {
   return c.json({
     service: "x402-pdf-to-text",
-    description: "Extract text from PDF files. Supports text-based and scanned/image PDFs via OCR.",
-    endpoint: "POST /extract (multipart/form-data with 'file' field)",
+    description: 'Extract text from PDF files. Send POST / with {"input": "extract text"} as multipart/form-data with a file field',
     price: "$0.01 per request (Base mainnet)",
     maxFileSize: "10MB",
   });
