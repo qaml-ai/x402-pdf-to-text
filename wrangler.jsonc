@@ -16,5 +16,11 @@
       "pattern": "pdf.camelai.io",
       "custom_domain": true
     }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "API_KEYS",
+      "id": "d60ccd7d1840419ea47fb63caee0ebf0"
+    }
   ]
 }
