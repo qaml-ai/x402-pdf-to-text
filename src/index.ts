@@ -1,17 +1,10 @@
 import { Hono } from "hono";
 import { cdpPaymentMiddleware } from "x402-cdp";
 import { stripeApiKeyMiddleware } from "x402-stripe";
-import { extractParams } from "x402-ai";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 const app = new Hono<{ Bindings: Env }>();
-
-const SYSTEM_PROMPT = `You are a parameter extractor for a PDF text extraction service.
-Extract the following from the user's message and return JSON:
-- "url": the URL of the PDF file to extract text from (required)
-
-Return ONLY valid JSON, no explanation. Example: {"url": "https://files.camelai.io/abc123?token=xyz&expires=999"}`;
 
 app.use(stripeApiKeyMiddleware({ serviceName: "pdf-to-text" }));
 
@@ -21,15 +14,12 @@ app.use(async (c, next) => {
     (env) => ({
       "POST /": {
         accepts: [
-          {
-            scheme: "exact",
-            price: "$0.01",
-            network: "eip155:8453",
-            payTo: env.SERVER_ADDRESS as `0x${string}`,
-          },
+          { scheme: "exact", price: "$0.01", network: "eip155:8453", payTo: env.SERVER_ADDRESS as `0x${string}` },
+      { scheme: "exact" as const, price: "$0.01", network: "eip155:137", payTo: env.SERVER_ADDRESS as `0x${string}` },
+      { scheme: "exact" as const, price: "$0.01", network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", payTo: "CvraJ4avKPpJNLvMhMH5ip2ihdt85PXvDwfzXdziUxRq" },
         ],
         description:
-          "Extract text from a PDF at a URL. Send {\"input\": \"extract text from https://...\"}. Upload files first at https://files.camelai.io to get a URL.",
+          "Extract text from a PDF at a URL. Send {\"url\": \"https://...\"}. Upload files first at https://files.camelai.io to get a URL.",
         mimeType: "application/json",
         extensions: {
           bazaar: {
@@ -39,10 +29,10 @@ app.use(async (c, next) => {
                 method: "POST",
                 bodyType: "json",
                 body: {
-                  input: {
+                  url: {
                     type: "string",
                     description:
-                      "Describe what PDF to extract text from. Provide a URL to the PDF. Upload local files to https://files.camelai.io first.",
+                      "URL of the PDF to extract text from. Upload local files to https://files.camelai.io first.",
                     required: true,
                   },
                 },
@@ -148,16 +138,11 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 }
 
 app.post("/", async (c) => {
-  const body = await c.req.json<{ input?: string }>();
-  if (!body?.input) {
-    return c.json({ error: "Missing 'input' field" }, 400);
+  const body = await c.req.json<{ url?: string }>();
+  if (!body?.url) {
+    return c.json({ error: "Missing 'url' field. Upload your file to https://files.camelai.io first to get a URL." }, 400);
   }
-
-  const params = await extractParams(c.env.CF_GATEWAY_TOKEN, SYSTEM_PROMPT, body.input);
-  const url = params.url as string;
-  if (!url) {
-    return c.json({ error: "Could not determine PDF URL. Upload your file to https://files.camelai.io first to get a URL." }, 400);
-  }
+  const url = body.url.trim();
 
   // Fetch the PDF
   const pdfRes = await fetch(url);
@@ -241,7 +226,7 @@ app.get("/", (c) => {
   return c.json({
     service: "x402-pdf-to-text",
     description:
-      "Extract text from PDFs via URL. Send POST / with {\"input\": \"extract text from https://...\"}. Upload local files to https://files.camelai.io first to get a URL.",
+      "Extract text from PDFs via URL. Send POST / with {\"url\": \"https://...\"}. Upload local files to https://files.camelai.io first to get a URL.",
     price: "$0.01 per request (Base mainnet)",
     maxFileSize: "10MB",
   });
