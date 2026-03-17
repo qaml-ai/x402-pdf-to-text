@@ -223,12 +223,8 @@ app.post("/", async (c) => {
 });
 
 app.get("/", (c) => {
-  return c.json({
-    service: "x402-pdf-to-text",
-    description:
-      "Extract text from PDFs via URL. Send POST / with {\"url\": \"https://...\"}. Upload local files to https://files.camelai.io first to get a URL.",
-    price: "$0.01 per request (Base mainnet)",
-    maxFileSize: "10MB",
+  return new Response('# pdf.camelai.io \\u2014 PDF to Text\n\nExtract text from PDFs. Upload files to files.camelai.io first.\n\nPart of [camelai.io](https://camelai.io).\n\n## API\n\n\\`POST /\\` \\u2014 $0.01 per request\n\n**Body:** `{"url": "https://files.camelai.io/..."}`\n\n**Response:** JSON with extracted text\n\n## Payment\n\nAccepts USDC on Base, Polygon, or Solana via x402. Or use a Stripe API key (\\`Authorization: Bearer sk_camel_...\\`).\n\nSee [camelai.io](https://camelai.io) for payment setup and full service list.', {
+    headers: { "Content-Type": "text/markdown; charset=utf-8" },
   });
 });
 
